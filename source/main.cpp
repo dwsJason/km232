@@ -20,12 +20,12 @@ VOID ErrorExit(LPCSTR);
 VOID KeyEventProc(KEY_EVENT_RECORD);
 VOID MouseEventProc(MOUSE_EVENT_RECORD);
 VOID ResizeEventProc(WINDOW_BUFFER_SIZE_RECORD);
+void InitScreen(int width, int height);
 
 int main(int argc, char* argv[])
 {
     DWORD cNumRead, fdwMode, i;
     INPUT_RECORD irInBuf[128];
-    int counter = 0;
 
     // Get the standard input handle. 
 
@@ -49,26 +49,13 @@ int main(int argc, char* argv[])
     if (!SetConsoleMode(hStdin, fdwMode))
         ErrorExit("SetConsoleMode");
 
-	// Set the text colors
-	WORD wTextAttrib = FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY | BACKGROUND_BLUE;
-	SetConsoleTextAttribute(hStdOut, wTextAttrib);
 
-	// Set The Console Title
-	SetConsoleTitle(L"KM232 Terminal - Version 0");
-
-	// Set Screen Dimensions
-	COORD dwSize;
-	dwSize.X = 80; dwSize.Y=25;
-	SetConsoleScreenBufferSize(hStdOut, dwSize);
-
-	// Clear the Screen
-	// Get Dimensions
-	// Then fill Attribs for each line
-	// Then fill spaces for each line
+	// Resize/Clear the screen
+	InitScreen(80,24);
 
     // Loop to read and handle the next 500 input events. 
 
-    while (counter++ <= 500)
+    while (TRUE)
     {
         // Wait for the events. 
 
@@ -195,4 +182,61 @@ VOID ResizeEventProc(WINDOW_BUFFER_SIZE_RECORD wbsr)
     printf("Resize event\n");
     printf("Console screen buffer is %d columns by %d rows.\n", wbsr.dwSize.X, wbsr.dwSize.Y);
 }
+
+
+//-----------------------------------------------------------------------------
+// Resize the Window, and the Screen
+// Clear Screen
+// Initialize Title
+// Hide Cursor
+// Etc
+void InitScreen(int width, int height)
+{
+	// Set the text colors
+	WORD wTextAttrib = FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY | BACKGROUND_BLUE;
+	SetConsoleTextAttribute(hStdOut, wTextAttrib);
+
+	// Set The Console Title
+	SetConsoleTitle(L"KM232 Terminal - Version 0");
+
+	// Shrink the window - (due to how these functions work)
+	SMALL_RECT winRect;
+	winRect.Left = 0; winRect.Top = 0;
+	winRect.Right = 1; winRect.Bottom = 1;
+	SetConsoleWindowInfo(hStdOut, TRUE, &winRect);
+
+	// Set Screen Dimensions
+	COORD dwSize;
+	dwSize.X = width; dwSize.Y=height;
+	SetConsoleScreenBufferSize(hStdOut, dwSize);
+
+	// Resize Window for our new buffer
+	CONSOLE_FONT_INFO fontInfo;
+    GetCurrentConsoleFont(hStdOut, TRUE, &fontInfo);
+
+	winRect.Right = width-1;
+	winRect.Bottom = height-1;
+	SetConsoleWindowInfo(hStdOut, TRUE, &winRect);
+
+	// Clear the Screen
+	// Then fill Attribs for each line
+	// Then fill spaces for each line
+	COORD dwCursorPosition;
+	dwCursorPosition.X = dwCursorPosition.Y = 0;
+	SetConsoleCursorPosition(hStdOut, dwCursorPosition);
+
+	DWORD numOutput;
+	FillConsoleOutputCharacter(hStdOut, L' ', width * height, dwCursorPosition,
+							   &numOutput);
+
+	// Hide Cursor
+	CONSOLE_CURSOR_INFO cursorInfo;
+	cursorInfo.dwSize = 100;
+	cursorInfo.bVisible = FALSE;
+	SetConsoleCursorInfo(hStdOut, &cursorInfo);
+
+}
+
+
+//-----------------------------------------------------------------------------
 
