@@ -53,6 +53,14 @@ int main(int argc, char* argv[])
 	WORD wTextAttrib = FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY | BACKGROUND_BLUE;
 	SetConsoleTextAttribute(hStdOut, wTextAttrib);
 
+	// Set The Console Title
+	SetConsoleTitle(L"KM232 Terminal - Version 0");
+
+	// Set Screen Dimensions
+	COORD dwSize;
+	dwSize.X = 80; dwSize.Y=25;
+	SetConsoleScreenBufferSize(hStdOut, dwSize);
+
 	// Clear the Screen
 	// Get Dimensions
 	// Then fill Attribs for each line
