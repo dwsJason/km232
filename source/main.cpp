@@ -17,6 +17,39 @@
 #include <libserialport.h>
 
 //-----------------------------------------------------------------------------
+//
+// KM232 USB COMMAND CONSTANTS
+//
+const unsigned char USB_BufferClear   = 0x38;			// Like a device Reset
+
+const unsigned char USB_MouseLeft     = 0x42;
+const unsigned char USB_MouseRight    = 0x43;
+const unsigned char USB_MouseUp       = 0x44;
+const unsigned char USB_MouseDown     = 0x45;
+
+const unsigned char USB_MouseLeftButton   = 0x49;
+const unsigned char USB_MouseRightButton  = 0x4A;
+const unsigned char USB_MouseMiddleButton = 0x4D;
+
+const unsigned char USB_ScrollWheelUp   = 0x57;
+const unsigned char USB_ScrollWheelDown = 0x58;
+
+const unsigned char USB_MouseSlow     = 0x6D;
+const unsigned char USB_MouseFast     = 0x6F;
+
+const unsigned char USB_StatusLEDRead = 0x7F;			// Status of LEDs
+
+// And masks for the StatusLEDRead Command
+const unsigned char StatusNumLock    = 0x01;
+const unsigned char StatusCapsLock   = 0x02;
+const unsigned char StatusScrollLock = 0x04;
+
+const unsigned char USB_BREAK = 128;
+
+
+
+
+//-----------------------------------------------------------------------------
 // Global Variables for this Toy Program
 HANDLE hStdin;
 HANDLE hStdOut;
@@ -24,12 +57,19 @@ DWORD fdwSaveOldMode;
 
 struct sp_port* pSCC = nullptr;
 
+//
+// Current List of Keys that are down
+//
+static std::vector<WORD> keys;	// list of keys that are down
+
+
 //-----------------------------------------------------------------------------
 // Prototypes
 VOID ErrorExit(LPCSTR);
 VOID KeyEventProc(KEY_EVENT_RECORD);
 VOID MouseEventProc(MOUSE_EVENT_RECORD);
 VOID ResizeEventProc(WINDOW_BUFFER_SIZE_RECORD);
+void FocusEventProc(FOCUS_EVENT_RECORD fer);
 void InitScreen(int width, int height);
 const char* KeyToString(WORD vkCode);
 void InitSerialPort(const char* portName);
@@ -98,7 +138,9 @@ int main(int argc, char* argv[])
                 ResizeEventProc(irInBuf[i].Event.WindowBufferSizeEvent);
                 break;
 
-            case FOCUS_EVENT:  // disregard focus events 
+			case FOCUS_EVENT:  // disregard focus events 
+				FocusEventProc(irInBuf[i].Event.FocusEvent);
+				break;
 
             case MENU_EVENT:   // disregard menu events 
                 break;
@@ -130,12 +172,55 @@ VOID ErrorExit(LPCSTR lpszMessage)
 
 //-----------------------------------------------------------------------------
 
+void FocusEventProc(FOCUS_EVENT_RECORD fer)
+{
+	COORD dwCursorPosition;
+	dwCursorPosition.X = 0;
+	dwCursorPosition.Y = 1;
+	SetConsoleCursorPosition(hStdOut, dwCursorPosition);
+
+	printf("FOCUS EVENT: %s ", fer.bSetFocus ? "true" : "false");
+
+	if (!fer.bSetFocus)
+	{
+		#if 0
+		// When we lose focus, we better release all the keys
+		while (keys.size())
+		{
+			WORD key = keys[ keys.size() - 1 ];
+			keys.pop_back();
+
+			unsigned char km_code = KeyToMakeCode( key );
+			if (km_code)
+			{
+				// Send Break Code
+				SerialSend(km_code + USB_BREAK);
+			}
+		}
+		#else
+		// Clear the Keys more efficiently
+		if (0 != keys.size())
+		{
+			keys.clear();
+			SerialSend(USB_BufferClear); // USB Buffer Clear
+		}
+		#endif
+
+		// Erase the Key Status
+		dwCursorPosition.Y = 4;
+		SetConsoleCursorPosition(hStdOut, dwCursorPosition);
+		printf("                                                                ");
+
+
+	}
+}
+
+//-----------------------------------------------------------------------------
+
 VOID KeyEventProc(KEY_EVENT_RECORD ker)
 {
 // I'm using a vector instead of a map, because I need to know which keys
 // are the oldest, to simulator rollover
-
-static std::vector<WORD> keys;	// list of keys that are down
 
 	if (ker.bKeyDown)
 	{
@@ -177,7 +262,7 @@ static std::vector<WORD> keys;	// list of keys that are down
 				if (km_code)
 				{
 					// Send Break Code
-					SerialSend(km_code + 128);
+					SerialSend(km_code + USB_BREAK);
 				}
 
 
@@ -209,6 +294,10 @@ static std::vector<WORD> keys;	// list of keys that are down
 
 VOID MouseEventProc(MOUSE_EVENT_RECORD mer)
 {
+static POINT currentMouse;
+static bool mouseTrack;
+static bool button0 = false;
+
 	COORD dwCursorPosition;
 	dwCursorPosition.X = 0;
 	dwCursorPosition.Y = 8;
@@ -228,12 +317,25 @@ VOID MouseEventProc(MOUSE_EVENT_RECORD mer)
         if (mer.dwButtonState == FROM_LEFT_1ST_BUTTON_PRESSED)
         {
             printf(" left");
+			SerialSend(USB_MouseLeftButton); 	// Make Code
+			button0 = true;
         }
+		else if (button0)
+		{
+			button0 = false;
+			SerialSend(USB_MouseLeftButton + USB_BREAK);  // Break Code
+		}
 
         if (mer.dwButtonState == RIGHTMOST_BUTTON_PRESSED)
         {
             printf(" right");
+			GetCursorPos(&currentMouse);
+			mouseTrack = true;
         }
+		else
+		{
+			mouseTrack = false;
+		}
 
 		if (mer.dwButtonState == FROM_LEFT_2ND_BUTTON_PRESSED)
 		{
@@ -246,9 +348,52 @@ VOID MouseEventProc(MOUSE_EVENT_RECORD mer)
     case MOUSE_HWHEELED:
         printf("h wheel");
         break;
-    case MOUSE_MOVED:
-        printf("");
+	case MOUSE_MOVED:
+		{
+			POINT p;
+			if (GetCursorPos(&p))
+			{
+				//cursor position now in p.x and p.y
+				printf(" %d,%d %d,%d", p.x, p.y, mer.dwMousePosition.X, mer.dwMousePosition.Y );
+			}
 
+			if (mouseTrack)
+			{
+				int result;
+
+				while ((p.x != currentMouse.x) || (p.y != currentMouse.y))
+				{
+					if (p.x > currentMouse.x)
+					{
+						currentMouse.x++;
+						result = SerialSend(USB_MouseRight);
+					}
+					else if (p.x < currentMouse.x)
+					{
+						currentMouse.x--;
+						result = SerialSend(USB_MouseLeft);
+					}
+
+					// Timeout on the port
+					if (result < 0) break;
+
+					if (p.y > currentMouse.y)
+					{
+						currentMouse.y++;
+						result = SerialSend(USB_MouseDown);
+					}
+					else if (p.y < currentMouse.y)
+					{
+						currentMouse.y--;
+						result = SerialSend(USB_MouseUp);
+					}
+
+					// Timeout on the port
+					if (result < 0) break;
+				}
+			}
+
+		}
         break;
     case MOUSE_WHEELED:
         printf(" wheel");
@@ -295,7 +440,7 @@ void InitScreen(int width, int height)
 	SetConsoleTextAttribute(hStdOut, wTextAttrib);
 
 	// Set The Console Title
-	SetConsoleTitle(L"KM232 Terminal - Version 0");
+	SetConsoleTitle(L"KM232 Terminal - Version 0.1");
 
 	// Shrink the window - (due to how these functions work)
 	SMALL_RECT winRect;
@@ -897,7 +1042,15 @@ void InitSerialPort(const char* portName)
 			sp_set_stopbits(pSCC, 1);
 			sp_set_flowcontrol(pSCC, SP_FLOWCONTROL_NONE);
 
-			int result = SerialSend(0x7F);
+			// Probably a good idea to reset the keyboard if it's out first connect
+			int result = SerialSend( USB_BufferClear );
+
+			if (result >= 0)
+				result = SerialSend( USB_MouseFast );
+
+			if (result >= 0)
+				result = SerialSend( USB_StatusLEDRead );
+
 			if (result >= 0)
 			{
 				if ((result >= 0x30) && (result <= 0x37))
@@ -931,13 +1084,13 @@ int SerialSend(unsigned char command)
 
 	if (pSCC)
 	{
-		int num_bytes = sp_blocking_write(pSCC, &command, 1, 100);
+		int num_bytes = sp_blocking_write(pSCC, &command, 1, 50);
 
 		if (1 == num_bytes)
 		{
 			// Value Sent, get the result, and return it back
 			unsigned char byte = 0;
-			num_bytes = sp_blocking_read(pSCC, &byte, 1, 100);
+			num_bytes = sp_blocking_read(pSCC, &byte, 1, 50);
 
 			if (1 == num_bytes)
 			{
@@ -950,4 +1103,52 @@ int SerialSend(unsigned char command)
 	return result;
 }
 //-----------------------------------------------------------------------------
-
+#if 0
+void AdbKeyboard::RegisterKeyboardHook()
+{
+  if (keyboardHook == nullptr)
+  {
+    keyboard = this;
+    keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardHook, nullptr, 0);
+  }
+}
+void AdbKeyboard::RemoveKeyboardHook()
+{
+  if (keyboardHook != nullptr)
+  {
+    UnhookWindowsHookEx(keyboardHook);
+    keyboardHook = nullptr;
+  }
+}
+LRESULT CALLBACK AdbKeyboard::LowLevelKeyboardHook(int code, WPARAM wParam, LPARAM lParam)
+{
+  static bool deskManagerKeysDown = false;
+  if ((wParam == WM_KEYDOWN) || (wParam == WM_KEYUP))
+  {
+    KBDLLHOOKSTRUCT* hookStruct = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+    if ((hookStruct->vkCode == VK_ESCAPE) && (GetAsyncKeyState(VK_CONTROL) < 0) && (GetAsyncKeyState(VK_MENU) < 0))
+    {
+      Direct2DWindow* mainWindow = Direct2DWindow::GetMainWindow();
+      if ((mainWindow != nullptr) && (GetActiveWindow() == mainWindow->GetHwnd()))
+      {
+        if (wParam == WM_KEYDOWN)
+        {
+          // make sure we only add Ctrl+OA+Esc to the queue once
+          if (!deskManagerKeysDown)
+          {
+            deskManagerKeysDown = true;
+            keyboard->keycodeQueue.push(KEYCODE_ESCAPE);
+          }
+        }
+        else
+        {
+          keyboard->keycodeQueue.push(KEYCODE_ESCAPE | '\x80');
+          deskManagerKeysDown = false;
+        }
+        return reinterpret_cast<LPARAM>(&LowLevelKeyboardHook);
+      }
+    }
+  }
+  return CallNextHookEx(nullptr, code, wParam, lParam);
+}
+#endif
