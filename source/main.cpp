@@ -312,6 +312,8 @@ static bool button0 = false;
 
     switch (mer.dwEventFlags)
     {
+    case DOUBLE_CLICK:
+        printf(" 2click");
     case 0:
 
         if (mer.dwButtonState == FROM_LEFT_1ST_BUTTON_PRESSED)
@@ -341,9 +343,6 @@ static bool button0 = false;
 		{
 			printf(" middle");
 		}
-        break;
-    case DOUBLE_CLICK:
-        printf(" 2click");
         break;
     case MOUSE_HWHEELED:
         printf("h wheel");
