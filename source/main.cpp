@@ -316,7 +316,7 @@ static bool button0 = false;
         printf(" 2click");
     case 0:
 
-        if (mer.dwButtonState == FROM_LEFT_1ST_BUTTON_PRESSED)
+        if (mer.dwButtonState & FROM_LEFT_1ST_BUTTON_PRESSED)
         {
             printf(" left");
 			SerialSend(USB_MouseLeftButton); 	// Make Code
@@ -328,7 +328,7 @@ static bool button0 = false;
 			SerialSend(USB_MouseLeftButton + USB_BREAK);  // Break Code
 		}
 
-        if (mer.dwButtonState == RIGHTMOST_BUTTON_PRESSED)
+        if (mer.dwButtonState & RIGHTMOST_BUTTON_PRESSED)
         {
             printf(" right");
 			GetCursorPos(&currentMouse);
@@ -339,7 +339,7 @@ static bool button0 = false;
 			mouseTrack = false;
 		}
 
-		if (mer.dwButtonState == FROM_LEFT_2ND_BUTTON_PRESSED)
+		if (mer.dwButtonState & FROM_LEFT_2ND_BUTTON_PRESSED)
 		{
 			printf(" middle");
 		}
