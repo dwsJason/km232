@@ -54,7 +54,7 @@ const unsigned char USB_BREAK = 128;
 HANDLE hStdin;
 HANDLE hStdOut;
 DWORD fdwSaveOldMode;
-
+static HHOOK keyboardHook = nullptr;
 struct sp_port* pSCC = nullptr;
 
 //
@@ -75,6 +75,7 @@ const char* KeyToString(WORD vkCode);
 void InitSerialPort(const char* portName);
 int SerialSend(unsigned char);  // Send/Receive Char, if result < 0, then timeout
 unsigned char KeyToMakeCode(WORD vkCode);
+void RegisterKeyboardHook();
 
 int main(int argc, char* argv[])
 {
@@ -108,6 +109,9 @@ int main(int argc, char* argv[])
 
 	// Setup the Serial Port
 	InitSerialPort("COM4");
+
+	// Set we can do ctrl-alt-esc
+	//RegisterKeyboardHook();
 
     while (TRUE)
     {
@@ -1102,16 +1106,7 @@ int SerialSend(unsigned char command)
 	return result;
 }
 //-----------------------------------------------------------------------------
-#if 0
-void AdbKeyboard::RegisterKeyboardHook()
-{
-  if (keyboardHook == nullptr)
-  {
-    keyboard = this;
-    keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardHook, nullptr, 0);
-  }
-}
-void AdbKeyboard::RemoveKeyboardHook()
+void RemoveKeyboardHook()
 {
   if (keyboardHook != nullptr)
   {
@@ -1119,35 +1114,49 @@ void AdbKeyboard::RemoveKeyboardHook()
     keyboardHook = nullptr;
   }
 }
-LRESULT CALLBACK AdbKeyboard::LowLevelKeyboardHook(int code, WPARAM wParam, LPARAM lParam)
+
+LRESULT CALLBACK LowLevelKeyboardHook(int code, WPARAM wParam, LPARAM lParam)
 {
+#if 0
   static bool deskManagerKeysDown = false;
   if ((wParam == WM_KEYDOWN) || (wParam == WM_KEYUP))
   {
     KBDLLHOOKSTRUCT* hookStruct = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
     if ((hookStruct->vkCode == VK_ESCAPE) && (GetAsyncKeyState(VK_CONTROL) < 0) && (GetAsyncKeyState(VK_MENU) < 0))
     {
-      Direct2DWindow* mainWindow = Direct2DWindow::GetMainWindow();
-      if ((mainWindow != nullptr) && (GetActiveWindow() == mainWindow->GetHwnd()))
+      //Direct2DWindow* mainWindow = Direct2DWindow::GetMainWindow();
+      //if ((mainWindow != nullptr) && (GetActiveWindow() == mainWindow->GetHwnd()))
       {
+		#if 1
         if (wParam == WM_KEYDOWN)
         {
           // make sure we only add Ctrl+OA+Esc to the queue once
           if (!deskManagerKeysDown)
           {
             deskManagerKeysDown = true;
-            keyboard->keycodeQueue.push(KEYCODE_ESCAPE);
+            //keyboard->keycodeQueue.push(KEYCODE_ESCAPE);
           }
         }
         else
         {
-          keyboard->keycodeQueue.push(KEYCODE_ESCAPE | '\x80');
+          //keyboard->keycodeQueue.push(KEYCODE_ESCAPE | '\x80');
           deskManagerKeysDown = false;
         }
+		#endif
         return reinterpret_cast<LPARAM>(&LowLevelKeyboardHook);
       }
     }
   }
+#endif
   return CallNextHookEx(nullptr, code, wParam, lParam);
 }
-#endif
+void RegisterKeyboardHook()
+{
+  if (keyboardHook == nullptr)
+  {
+    //keyboard = this;
+    keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardHook, GetModuleHandle(nullptr), 0);
+  }
+}
+//-----------------------------------------------------------------------------
+
