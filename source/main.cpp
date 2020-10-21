@@ -16,6 +16,10 @@
 
 #include <libserialport.h>
 
+// Set to 1, otherwise KM232
+#define ASC232 1
+#define KM232  0
+
 //-----------------------------------------------------------------------------
 //
 // KM232 USB COMMAND CONSTANTS
@@ -1039,26 +1043,48 @@ void InitSerialPort(const char* portName)
 	{
 		if (SP_OK == sp_open(pSCC, SP_MODE_READ_WRITE))
 		{
+			#if !ASC232
 			sp_set_baudrate(pSCC, 9600);
 			sp_set_bits(pSCC, 8);
 			sp_set_parity(pSCC, SP_PARITY_NONE);
 			sp_set_stopbits(pSCC, 1);
 			sp_set_flowcontrol(pSCC, SP_FLOWCONTROL_NONE);
+			#else
+			sp_set_baudrate(pSCC, 38400);
+			sp_set_bits(pSCC, 8);
+			sp_set_parity(pSCC, SP_PARITY_NONE);
+			sp_set_stopbits(pSCC, 1);
+			sp_set_flowcontrol(pSCC, SP_FLOWCONTROL_RTSCTS);
+			#endif
+
+#if ASC232
+//			Sleep(1000);
+#endif
+
 
 			// Probably a good idea to reset the keyboard if it's out first connect
 			int result = SerialSend( USB_BufferClear );
+			//printf("result = %02x", result);
 
+#if KM232
 			if (result >= 0)
 				result = SerialSend( USB_MouseFast );
+#endif
 
 			if (result >= 0)
 				result = SerialSend( USB_StatusLEDRead );
+
+//			printf(" result = %02x", result);
 
 			if (result >= 0)
 			{
 				if ((result >= 0x30) && (result <= 0x37))
 				{
+					#if ASC232
+					printf("ASC232 live on %s", portName);
+					#else
 					printf("KM232 live on %s", portName);
+					#endif
 				}
 			}
 			else
